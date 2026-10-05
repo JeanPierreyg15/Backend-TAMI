@@ -66,48 +66,41 @@ class ProductoImageService
     /**
      * Maneja los 3 pasos de WhatsApp en tabla normalizada producto_whatsapp_pasos.
      */
-    public function handleWhatsappPasos(Producto $producto, ?UploadedFile $mainFile, array $extraData = []): void
-    {
-        $pasosConfig = [
-            1 => [
-                'mensaje' => $extraData['whatsapp_mensaje'] ?? '',
-                'delay_minutos' => (int) ($extraData['whatsapp_time_1'] ?? 0),
-                'image_file' => $mainFile,
-            ],
-            2 => [
-                'mensaje' => $extraData['whatsapp_mensaje_2'] ?? null,
-                'delay_minutos' => (int) ($extraData['whatsapp_time_2'] ?? 0),
-                'image_file' => $extraData['whatsapp_image_2'] ?? null,
-            ],
-            3 => [
-                'mensaje' => $extraData['whatsapp_mensaje_3'] ?? null,
-                'delay_minutos' => (int) ($extraData['whatsapp_time_3'] ?? 0),
-                'image_file' => $extraData['whatsapp_image_3'] ?? null,
-            ],
-        ];
+   public function handleWhatsappPasos(Producto $producto, ?UploadedFile $mainFile, array $extraData = []): void
+{
+    $pasosConfig = [
+        1 => ['mensaje_key' => 'whatsapp_mensaje',   'time_key' => 'whatsapp_time_1', 'image_file' => $mainFile],
+        2 => ['mensaje_key' => 'whatsapp_mensaje_2', 'time_key' => 'whatsapp_time_2', 'image_file' => $extraData['whatsapp_image_2'] ?? null],
+        3 => ['mensaje_key' => 'whatsapp_mensaje_3', 'time_key' => 'whatsapp_time_3', 'image_file' => $extraData['whatsapp_image_3'] ?? null],
+    ];
 
-        foreach ($pasosConfig as $paso => $config) {
-            $pasoData = [
-                'mensaje' => $config['mensaje'],
-                'delay_minutos' => $config['delay_minutos'],
-            ];
+    foreach ($pasosConfig as $paso => $config) {
+        $pasoData = [];
 
-            $imageFile = $config['image_file'];
-            if ($imageFile instanceof UploadedFile) {
-                // Borrar imagen anterior si existe
-                $existente = ProductoWhatsappPaso::where('producto_id', $producto->id)->where('paso', $paso)->first();
-                if ($existente && !empty($existente->imagen_url)) {
-                    $this->deleteImageFromStorage($existente->imagen_url);
-                }
-                $pasoData['imagen_url'] = $this->guardarImagen($imageFile, $producto->nombre)['url'];
-            }
-
-            ProductoWhatsappPaso::updateOrCreate(
-                ['producto_id' => $producto->id, 'paso' => $paso],
-                $pasoData
-            );
+        // Solo escribir si el campo llegó en el request y no es null
+        if (array_key_exists($config['mensaje_key'], $extraData) && $extraData[$config['mensaje_key']] !== null) {
+            $pasoData['mensaje'] = $extraData[$config['mensaje_key']];
         }
+
+        if (array_key_exists($config['time_key'], $extraData) && $extraData[$config['time_key']] !== null) {
+            $pasoData['delay_minutos'] = (int) $extraData[$config['time_key']];
+        }
+
+        $imageFile = $config['image_file'];
+        if ($imageFile instanceof UploadedFile) {
+            $existente = ProductoWhatsappPaso::where('producto_id', $producto->id)->where('paso', $paso)->first();
+            if ($existente && !empty($existente->imagen_url)) {
+                $this->deleteImageFromStorage($existente->imagen_url);
+            }
+            $pasoData['imagen_url'] = $this->guardarImagen($imageFile, $producto->nombre)['url'];
+        }
+
+        ProductoWhatsappPaso::updateOrCreate(
+            ['producto_id' => $producto->id, 'paso' => $paso],
+            $pasoData
+        );
     }
+}
 
     /**
      * Maneja un paso de Email en tabla normalizada producto_email_pasos.

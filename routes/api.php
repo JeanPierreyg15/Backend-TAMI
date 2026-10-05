@@ -20,6 +20,11 @@ use App\Http\Controllers\Api\V1\Deploy\FrontendDeployController;
 use App\Http\Controllers\Api\V1\HomePopup\HomePopupSettingController;
 use App\Http\Controllers\Api\V1\Chatbot\ChatbotController;
 
+use App\Http\Controllers\Api\V1\Configuracion\ConfiguracionContactoController;
+use App\Http\Controllers\Api\V1\Configuracion\RedSocialController;
+use App\Http\Controllers\Api\V1\Configuracion\HorarioAtencionController;
+
+
 
 Route::prefix('v1')->group(function () {
 
@@ -68,6 +73,20 @@ Route::prefix('v1')->group(function () {
             Route::delete('/{blog}', 'destroy');
         });
     });
+
+    Route::prefix('configuracion')->middleware('throttle:api')->group(function () {
+        Route::get('/contacto', [ConfiguracionContactoController::class, 'index']);
+        Route::get('/redes', [RedSocialController::class, 'index']);
+        Route::get('/horario', [HorarioAtencionController::class, 'index']);
+    });
+ 
+    // Escritura solo ADMIN
+    Route::middleware(['auth:sanctum', 'role:ADMIN'])->prefix('configuracion')->group(function () {
+        Route::put('/contacto', [ConfiguracionContactoController::class, 'update']);
+        Route::put('/redes', [RedSocialController::class, 'update']);
+        Route::put('/horario', [HorarioAtencionController::class, 'update']);
+    });
+
     // Rutas de Email
     Route::controller(EmailController::class)->prefix('/emails')->group(function () {
         // Enviar correo general (Protegido por seguridad)
