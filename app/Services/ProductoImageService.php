@@ -105,32 +105,72 @@ class ProductoImageService
     /**
      * Maneja un paso de Email en tabla normalizada producto_email_pasos.
      */
-    public function handleEmailPaso(Producto $producto, ?UploadedFile $file, int $slot, ?string $subject, array $extraData = []): void
-    {
-        $pasoData = [
-            'asunto' => $subject ?? '',
-            'mensaje' => $extraData['email_mensaje'] ?? null,
-            'btn_text' => $extraData['email_btn_text'] ?? null,
-            'btn_link' => $extraData['email_btn_link'] ?? null,
-            'btn_bg_color' => $extraData['email_btn_bg_color'] ?? null,
-            'btn_text_color' => $extraData['email_btn_text_color'] ?? null,
-            'delay_minutos' => (int) ($extraData['delay_minutes'] ?? 0),
-        ];
 
-        if ($file instanceof UploadedFile) {
-            // Borrar imagen anterior si existe
-            $existente = ProductoEmailPaso::where('producto_id', $producto->id)->where('paso', $slot)->first();
-            if ($existente && !empty($existente->imagen_url)) {
-                $this->deleteImageFromStorage($existente->imagen_url);
-            }
-            $pasoData['imagen_url'] = $this->guardarImagen($file, $producto->nombre)['url'];
-        }
+ public function handleEmailPaso(Producto $producto, ?UploadedFile $file, int $slot, ?string $subject, array $extraData = []): void
+{
+    $pasoData = [];
 
-        ProductoEmailPaso::updateOrCreate(
-            ['producto_id' => $producto->id, 'paso' => $slot],
-            $pasoData
-        );
+    if ($subject !== null) {
+        $pasoData['asunto'] = $subject;
     }
+
+    $map = [
+        'mensaje'        => 'email_mensaje',
+        'btn_text'       => 'email_btn_text',
+        'btn_link'       => 'email_btn_link',
+        'btn_bg_color'   => 'email_btn_bg_color',
+        'btn_text_color' => 'email_btn_text_color',
+    ];
+
+    foreach ($map as $columna => $clave) {
+        if (array_key_exists($clave, $extraData) && $extraData[$clave] !== null) {
+            $pasoData[$columna] = $extraData[$clave];
+        }
+    }
+
+    if (array_key_exists('delay_minutes', $extraData)) {
+        $pasoData['delay_minutos'] = (int) $extraData['delay_minutes'];
+    }
+
+    if ($file instanceof UploadedFile) {
+        $existente = ProductoEmailPaso::where('producto_id', $producto->id)->where('paso', $slot)->first();
+        if ($existente && !empty($existente->imagen_url)) {
+            $this->deleteImageFromStorage($existente->imagen_url);
+        }
+        $pasoData['imagen_url'] = $this->guardarImagen($file, $producto->nombre)['url'];
+    }
+
+    ProductoEmailPaso::updateOrCreate(
+        ['producto_id' => $producto->id, 'paso' => $slot],
+        $pasoData
+    );
+}
+    // public function handleEmailPaso(Producto $producto, ?UploadedFile $file, int $slot, ?string $subject, array $extraData = []): void
+    // {
+    //     $pasoData = [
+    //         'asunto' => $subject ?? '',
+    //         'mensaje' => $extraData['email_mensaje'] ?? null,
+    //         'btn_text' => $extraData['email_btn_text'] ?? null,
+    //         'btn_link' => $extraData['email_btn_link'] ?? null,
+    //         'btn_bg_color' => $extraData['email_btn_bg_color'] ?? null,
+    //         'btn_text_color' => $extraData['email_btn_text_color'] ?? null,
+    //         'delay_minutos' => (int) ($extraData['delay_minutes'] ?? 0),
+    //     ];
+
+    //     if ($file instanceof UploadedFile) {
+    //         // Borrar imagen anterior si existe
+    //         $existente = ProductoEmailPaso::where('producto_id', $producto->id)->where('paso', $slot)->first();
+    //         if ($existente && !empty($existente->imagen_url)) {
+    //             $this->deleteImageFromStorage($existente->imagen_url);
+    //         }
+    //         $pasoData['imagen_url'] = $this->guardarImagen($file, $producto->nombre)['url'];
+    //     }
+
+    //     ProductoEmailPaso::updateOrCreate(
+    //         ['producto_id' => $producto->id, 'paso' => $slot],
+    //         $pasoData
+    //     );
+    // }
 
     /**
      * Guarda un archivo de imagen en storage/imagenes.
