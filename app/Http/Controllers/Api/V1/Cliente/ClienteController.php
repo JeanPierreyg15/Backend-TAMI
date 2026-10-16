@@ -652,8 +652,13 @@ class ClienteController extends Controller
     public function getAdvancedList(Request $request)
     {
         try {
-            $perPage = $request->get('perPage', 1000);
-            $page = $request->get('page', 1);
+            $validated = $request->validate([
+                'perPage' => ['sometimes', 'integer', 'min:1', 'max:100'],
+                'page' => ['sometimes', 'integer', 'min:1'],
+            ]);
+
+            $perPage = $validated['perPage'] ?? 25;
+            $page = $validated['page'] ?? 1;
 
             // Obtener clientes con relaciones y estadísticas de WhatsApp
             $clientes = Cliente::with(['producto', 'source'])
@@ -710,7 +715,12 @@ class ClienteController extends Controller
                 HttpStatusCode::OK
             );
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Error al obtener los clientes: ' . $e->getMessage()], HttpStatusCode::INTERNAL_SERVER_ERROR->value);
+
+            \Log::error('Error al obtener los clientes', [
+                'exception' => $e,
+            ]);
+
+            return response()->json(['error' => 'No se pudo obtener la lista de clientes.'], HttpStatusCode::INTERNAL_SERVER_ERROR->value);
         }
     }
 
