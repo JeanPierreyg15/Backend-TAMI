@@ -18,6 +18,9 @@ class DatabaseSeeder extends Seeder
             AssignPermissionsToRolesSeeder::class,
             UserSeeder::class,
             
+            // Clientes
+            ClienteSourcesSeeder::class,
+
             // Productos
             ProductoSeeder::class,
             // EspecificacionSeeder::class,
