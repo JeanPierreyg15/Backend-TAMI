@@ -42,9 +42,9 @@ class Claim extends Model
     /**
      * Get the product for the claim.
      */
-    public function product(): BelongsTo
+    public function producto(): BelongsTo
     {
-        return $this->belongsTo(Product::class);
+        return $this->belongsTo(Producto::class, 'producto_id');
     }
 
     /**
@@ -61,13 +61,5 @@ class Claim extends Model
     public function claimStatus(): BelongsTo
     {
         return $this->belongsTo(ClaimStatus::class);
-    }
-
-    /**
-     * Get the responses for the claim.
-     */
-    public function responses(): HasMany
-    {
-        return $this->hasMany(ClaimResponse::class);
     }
 }
