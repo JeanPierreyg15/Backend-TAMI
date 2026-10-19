@@ -37,13 +37,12 @@ class UserControllerTest extends TestCase
         $this->actingAs($user, 'sanctum');
 
         $data = [
-            'name' => 'Juan Pérez',
+            'name' => 'Juan Pérez Actualizado',
             'email' => 'juan@example.com',
             'celular' => '987654321',
-            'password' => bcrypt('password'),
         ];
 
-        $response = $this->putJson(route('users.update', ['id' => $user->id]), $data);
+        $response = $this->putJson(route('users.update', ['user' => $user->id]), $data);
 
         $response->assertStatus(200)
             ->assertJson([
@@ -53,10 +52,9 @@ class UserControllerTest extends TestCase
 
         $this->assertDatabaseHas('users', [
             'id' => $user->id,
-            'name' => 'Juan Pérez',
+            'name' => 'Juan Pérez Actualizado',
             'email' => 'juan@example.com',
             'celular' => '987654321',
-            'password' => bcrypt('password'),
         ]);
     }
 
@@ -80,18 +78,15 @@ class UserControllerTest extends TestCase
             'name' => 'Juan Pérez',
             'email' => 'juan_nuevo@example.com',
             'celular' => '987654321',
-            'password' => bcrypt('password'),
         ];
 
         // ID inexistente
-        $response = $this->putJson(route('users.update', ['id' => 999]), $data);
-    
+        $response = $this->putJson(route('users.update', ['user' => 999]), $data);
 
-
-        $response->assertStatus(500)
+        $response->assertStatus(404)
             ->assertJson([
                 'success' => false,
-                'message' => "Ocurrió un problema al actualizar al usuario"
+                'message' => "Usuario no encontrado.",
             ]);
     }
 
@@ -118,7 +113,7 @@ class UserControllerTest extends TestCase
             'password' => bcrypt('password'),
         ];
 
-        $response = $this->putJson(route('users.update', ['id' => $user->id]), $data);
+        $response = $this->putJson(route('users.update', ['user' => $user->id]), $data);
 
         $response->assertStatus(200)
             ->assertJson([

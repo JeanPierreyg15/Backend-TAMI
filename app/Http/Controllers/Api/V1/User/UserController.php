@@ -2,6 +2,7 @@
 
 
 namespace App\Http\Controllers\Api\V1\User;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PostUser\PostUser;
 use App\Http\Requests\PostUser\PostUserUpdate;
@@ -287,9 +288,11 @@ class UserController extends Controller
                 : "No hubo cambios en los datos del usuario.";
 
             return $this->apiResponse->successResponse($user, $message);
+        } catch (ModelNotFoundException $e) {
+            return $this->apiResponse->notFoundResponse('Usuario no encontrado.');
         } catch (\Exception $e) {
             return $this->apiResponse->internalServerErrorResponse(
-                "Ocurrió un problema al actualizar al usuario: " . $e->getMessage()
+                $this->safeErrorMessage($e, 'actualizar al usuario')
             );
         }
     }
