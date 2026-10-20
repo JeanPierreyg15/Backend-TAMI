@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Campaña extends Model
+class Campana extends Model
 {
     // Permitimos que estos campos se puedan llenar masivamente
     protected $table = "campanas";
