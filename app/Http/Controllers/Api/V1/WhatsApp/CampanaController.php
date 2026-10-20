@@ -3,15 +3,15 @@
 namespace App\Http\Controllers\Api\V1\WhatsApp;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\WhatsApp\ActivarCampañaRequest;
-use App\Models\Campaña;
+use App\Http\Requests\WhatsApp\ActivarCampanaRequest;
+use App\Models\Campana;
 use App\Models\Cliente;
-use App\Jobs\EnviarCampañaWhatsAppJob;
+use App\Jobs\EnviarCampanaWhatsAppJob;
 use Illuminate\Support\Facades\DB;
 
-class CampañaController extends Controller
+class CampanaController extends Controller
 {
-    public function activar(ActivarCampañaRequest $request)
+    public function activar(ActivarCampanaRequest $request)
     {
         // Verificar que existan clientes para el producto
         $clientes = Cliente::where('producto_id', $request->producto_id)->get();
@@ -37,14 +37,14 @@ class CampañaController extends Controller
                 }
 
                 // Crear la campaña
-                $campaña = Campaña::create([
+                $campaña = Campana::create([
                     'nombre' => $request->nombre,
                     'producto_id' => $request->producto_id,
                     'contenido_personalizado' => $request->contenido_personalizado,
                     'imagen_path' => $imagenPath,
                 ]);
 
-                if (!$campaña) {
+                if (!$campana) {
                     throw new \Exception('Error al crear la campaña');
                 }
 
@@ -53,12 +53,12 @@ class CampañaController extends Controller
                 $jobsDispatchedCount = 0;
 
                 foreach ($clientes as $cliente) {
-                    EnviarCampañaWhatsAppJob::dispatch(
+                    EnviarCampanaWhatsAppJob::dispatch(
                         $cliente->celular,
-                        $campaña->contenido_personalizado,
-                        $campaña->imagen_path,
+                        $campana->contenido_personalizado,
+                        $campana->imagen_path,
                         $cliente->name,
-                        $campaña->id,
+                        $campana->id,
                         $cliente->id
                     )->delay(now()->addSeconds($delay));
                     
@@ -70,7 +70,7 @@ class CampañaController extends Controller
                     'success' => true,
                     'message' => 'Campaña activada y mensajes programados',
                     'data' => [
-                        'campaña_id' => $campaña->id,
+                        'campaña_id' => $campana->id,
                         'total_clientes' => $clientes->count(),
                         'mensajes_programados' => $jobsDispatchedCount
                     ]

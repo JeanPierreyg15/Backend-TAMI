@@ -22,7 +22,7 @@ class CampaignMessageLog extends Model
      */
     public function campana(): BelongsTo
     {
-        return $this->belongsTo(Campaña::class, 'campana_id');
+        return $this->belongsTo(Campana::class, 'campana_id');
     }
 
     /**
