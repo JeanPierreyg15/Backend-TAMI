@@ -47,7 +47,8 @@ Route::prefix('v1')->group(function () {
     });
 
     // Crear cliente (Público)
-    Route::post('clientes', [ClienteController::class, 'store']);
+    Route::middleware('throttle:public-forms')->post('clientes', [ClienteController::class, 'store']);
+
     // Clientes (Solo ADMIN y VENTAS)
     Route::middleware(['auth:sanctum', 'role:ADMIN|VENTAS'])->group(function () {
         Route::controller(ClienteController::class)->prefix('clientes')->group(function () {
