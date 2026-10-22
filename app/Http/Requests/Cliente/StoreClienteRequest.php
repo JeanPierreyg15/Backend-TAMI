@@ -15,12 +15,8 @@ class StoreClienteRequest extends FormRequest
     public function rules(): array
     {
         $sourceId = $this->input('source_id');
-    
-        $isUpsertSource = $sourceId == 2;
-        if (!$isUpsertSource && $sourceId) {
-            $source = \App\Models\ClienteSource::find($sourceId);
-            $isUpsertSource = $source && $source->name === 'Producto detalle';
-        }
+        $source = $sourceId ? \App\Models\ClienteSource::find($sourceId) : null;
+        $isUpsertSource = $source && $source->name === 'Producto detalle';
 
         return [
             'name' => 'required|string|min:2|max:100',

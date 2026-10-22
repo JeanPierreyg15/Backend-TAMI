@@ -121,7 +121,10 @@ class ClienteController extends Controller
             );
         }
         catch(\Exception $e){
-            return response()->json(['error' => 'Error al obtener los clientes: ' . $e->getMessage()], HttpStatusCode::INTERNAL_SERVER_ERROR->value);
+            return $this->apiResponse->errorResponse(
+                $this->safeErrorMessage($e, 'obtener los clientes'),
+                HttpStatusCode::INTERNAL_SERVER_ERROR
+            );
         }
 
     }
@@ -194,14 +197,13 @@ class ClienteController extends Controller
 
             if (isset($datosValidados['source_id'])) {
                 $source = ClienteSource::find($datosValidados['source_id']);
-                $shouldUpsert = $datosValidados['source_id'] == 2 || ($source && $source->name === 'Producto detalle');
+                $shouldUpsert = $source && $source->name === 'Producto detalle';
             }
 
             if ($shouldUpsert) {
                 // Buscar cliente existente por email o celular
-                $clienteExistente = Cliente::where('email', $datosValidados['email'])
-                    ->orWhere('celular', $datosValidados['celular'])
-                    ->first();
+                $clienteExistente = Cliente::where('email', $datosValidados['email'])->first()
+                 ?? Cliente::where('celular', $datosValidados['celular'])->first();
 
                 if ($clienteExistente) {
                     // Actualizar cliente existente
@@ -326,7 +328,10 @@ class ClienteController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
 
-            return response()->json(['error' => 'Error al crear el cliente: ' . $e->getMessage()], HttpStatusCode::INTERNAL_SERVER_ERROR->value);
+            return $this->apiResponse->errorResponse(
+                $this->safeErrorMessage($e, 'Crear el cliente'),
+                HttpStatusCode::INTERNAL_SERVER_ERROR
+            );
         }
     }
 
@@ -523,15 +528,19 @@ class ClienteController extends Controller
     public function update(UpdateClienteRequest $request, string $id)
     {
         $datosValidados = $request->validated();
+
+        $cliente = Cliente::find($id);
+        if (!$cliente){
+            return response() -> json (
+                ['error' => 'Cliente no encontrado'],
+                HttpStatusCode::NOT_FOUND->value
+            );
+        }
+
         DB::beginTransaction();
 
         try
         {
-            $cliente = Cliente::find($id);
-            if ($cliente == false) {
-                return response()->json(['error' => 'Cliente no encontrado'], HttpStatusCode::NOT_FOUND->value);
-            }
-
             $camposActualizar = [];
 
             foreach (['name', 'email', 'celular'] as $campo) {
@@ -610,14 +619,17 @@ class ClienteController extends Controller
 
     public function destroy(string $id)
     {
+        $cliente = Cliente::find($id);
+        if (!$cliente){
+            return response() -> json (
+                ['error' => 'Cliente no encontrado'],
+                HttpStatusCode::NOT_FOUND->value
+            );
+        }
+
         DB::beginTransaction();
 
         try{
-            $cliente = Cliente::find($id);
-            if ($cliente == false) {
-                return response()->json(['error' => 'Cliente no encontrado'], HttpStatusCode::NOT_FOUND->value);
-            }
-
             $cliente->delete();
 
             DB::commit();
@@ -628,16 +640,25 @@ class ClienteController extends Controller
                 HttpStatusCode::OK
             );
         }
-        catch(\Exception $e){
+        catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['error' => 'Error al eliminar el cliente: ' . $e->getMessage()], HttpStatusCode::INTERNAL_SERVER_ERROR->value);
+
+            return $this->apiResponse->errorResponse(
+                $this->safeErrorMessage($e, 'eliminar el cliente'),
+                HttpStatusCode::INTERNAL_SERVER_ERROR
+            );
         }
     }
 
     public function paginate(Request $request)
     {
-        $perPage = $request->get('perPage', 10);
-        $page = $request->get('page', 1);
+        $validate = $request->validate([
+            'perPage' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+        ]);
+
+        $perPage = $validate['perPage'] ?? 10;
+        $page = $validate['page'] ?? 1;
 
         $clientes = Cliente::paginate($perPage, ['*'], 'page', $page);
 

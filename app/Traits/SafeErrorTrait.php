@@ -16,7 +16,7 @@ trait SafeErrorTrait
      * @param int $statusCode Código de estado HTTP (por defecto 500)
      * @return JsonResponse|string
      */
-    protected function safeErrorMessage(\Throwable $e, string $context, int $statusCode = HttpStatusCode::INTERNAL_SERVER_ERROR)
+    protected function safeErrorMessage(\Throwable $e, string $context, int $statusCode = 500)
     {
         // Loguear siempre el error real para el administrador
         Log::error("Error al {$context}: " . $e->getMessage(), [
