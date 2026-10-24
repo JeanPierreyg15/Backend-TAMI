@@ -11,7 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use App\Models\CampaignMessageLog;
 
-class EnviarCampañaWhatsAppJob implements ShouldQueue
+class EnviarCampanaWhatsAppJob implements ShouldQueue
 {
     use Queueable, Dispatchable, InteractsWithQueue, SerializesModels, \App\Traits\FormatsTextTrait;
 
