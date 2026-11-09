@@ -235,18 +235,18 @@ class BlogControllerTest extends TestCase
     }
 
     #[Test]
-    public function rechaza_video_titulo_mayor_a_40_caracteres(): void
+    public function rechaza_video_titulo_mayor_a_255_caracteres(): void
     {
         $this->actingAs($this->admin(), 'sanctum');
 
         $this->post('/api/v1/blogs', $this->payloadCompleto([
             'miniatura' => UploadedFile::fake()->image('portada.jpg', 600, 400),
-            'video_titulo' => str_repeat('V', 41),
+            'video_titulo' => str_repeat('V', 256),
         ]), ['Accept' => 'application/json'])
             ->assertStatus(422)
             ->assertJsonValidationErrors('video_titulo');
     }
-
+    
     #[Test]
     public function elimina_miniatura_y_hero_image_al_actualizar(): void
     {
