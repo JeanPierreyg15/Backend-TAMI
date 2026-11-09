@@ -37,10 +37,10 @@ jobs:
               "cd ${{ env.DEST_PATH }} && \
                git fetch origin && \
                git reset --hard origin/${{ env.BRANCH }} && \
-               composer install --no-dev --optimize-autoloader && \
+               DB_CONNECTION=mysql CACHE_STORE=array composer install --no-dev --optimize-autoloader --no-interaction && \
                if [ \"${{ env.BRANCH }}\" = \"pre-master\" ]; then php artisan migrate --force; fi && \
                php artisan storage:link || true && \
                php artisan route:clear && \
                php artisan config:clear && \
-               php artisan cache:clear && \
+               CACHE_STORE=array php artisan cache:clear && \
                php artisan view:clear"
