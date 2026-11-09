@@ -5,8 +5,10 @@ namespace App\Services;
 use App\Models\Producto;
 use App\Models\ProductoWhatsappPaso;
 use App\Models\ProductoEmailPaso;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -20,6 +22,41 @@ class ProductoService
         private ProductoImageService $imageService,
         private KeywordProcessorService $keywordService
     ) {}
+
+    public function listar(): Collection
+    {
+        return Producto::with(['imagenes', 'especificaciones', 'productosRelacionados.imagenes', 'etiqueta', 'dimensiones'])
+            ->orderBy('created_at')
+            ->get();
+    }
+
+    public function relacionados(int $id): Producto
+    {
+        return Producto::with(['productosRelacionados'])->findOrFail($id);
+    }
+
+    public function paginados(int $perPage, int $page): LengthAwarePaginator
+    {
+        return Producto::paginate($perPage, ['*'], 'page', $page);
+    }
+
+    public function buscar(string $id): ?Producto
+    {
+        return Producto::with(['imagenes', 'productosRelacionados', 'etiqueta', 'dimensiones'])->find($id);
+    }
+
+    public function buscarPorLink(string $link): ?Producto
+    {
+        return Producto::with(['imagenes', 'productosRelacionados.imagenes', 'etiqueta', 'dimensiones'])
+            ->where('link', $link)
+            ->first();
+    }
+
+    public function buscarOFallar(string $id): Producto
+    {
+        return Producto::findOrFail($id);
+    }
+
 /**
      * Crea un nuevo producto con todas sus relaciones.
      *

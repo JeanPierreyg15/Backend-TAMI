@@ -2,8 +2,11 @@
 
 namespace Tests\Feature\Controller;
 
+use App\Mail\ProductInfoMail;
 use App\Models\Cliente;
 use App\Models\ClienteSource;
+use App\Models\Producto;
+use App\Models\ProductoEmailPaso;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -114,6 +117,74 @@ class ClienteControllerTest extends TestCase
     }
 
     #[Test]
+    public function actualiza_un_cliente_existente(): void
+    {
+        $cliente = Cliente::factory()->create([
+            'name' => 'Nombre Viejo',
+            'email' => 'viejo@example.com',
+            'celular' => '+51 999-000-111',
+            'source_id' => $this->sourceInicio->id,
+        ]);
+
+        $this->actingAs($this->admin(), 'sanctum');
+
+        $this->putJson("/api/v1/clientes/{$cliente->id}", [
+            'name' => 'Nombre Nuevo',
+            'email' => 'nuevo@example.com',
+            'celular' => '+51 999-000-222',
+        ])->assertOk()->assertJsonPath('data.name', 'Nombre Nuevo');
+    }
+
+    #[Test]
+    public function actualiza_un_cliente_conservando_su_email(): void
+    {
+        $cliente = Cliente::factory()->create([
+            'name' => 'Nombre Viejo',
+            'email' => 'mismo@example.com',
+            'celular' => '+51 999-000-111',
+            'source_id' => $this->sourceInicio->id,
+        ]);
+
+        $this->actingAs($this->admin(), 'sanctum');
+
+        $this->putJson("/api/v1/clientes/{$cliente->id}", [
+            'name' => 'Nombre Nuevo',
+            'email' => 'mismo@example.com',
+            'celular' => '+51 999-000-222',
+        ])->assertOk()->assertJsonPath('data.name', 'Nombre Nuevo');
+
+        $this->assertDatabaseHas('clientes', [
+            'id' => $cliente->id,
+            'name' => 'Nombre Nuevo',
+            'email' => 'mismo@example.com',
+        ]);
+    }
+
+    #[Test]
+    public function sigue_rechazando_el_email_de_otro_cliente(): void
+    {
+        Cliente::factory()->create([
+            'email' => 'ocupado@example.com',
+            'celular' => '+51 999-000-333',
+            'source_id' => $this->sourceInicio->id,
+        ]);
+
+        $cliente = Cliente::factory()->create([
+            'email' => 'mio@example.com',
+            'celular' => '+51 999-000-444',
+            'source_id' => $this->sourceInicio->id,
+        ]);
+
+        $this->actingAs($this->admin(), 'sanctum');
+
+        $this->putJson("/api/v1/clientes/{$cliente->id}", [
+            'name' => $cliente->name,
+            'email' => 'ocupado@example.com',
+            'celular' => $cliente->celular,
+        ])->assertStatus(422)->assertJsonValidationErrors('email');
+    }
+
+    #[Test]
     public function actualiza_el_cliente_existente_si_viene_de_producto_detalle(): void
     {
         $cliente = Cliente::factory()->create([
@@ -188,5 +259,114 @@ class ClienteControllerTest extends TestCase
         } finally {
             Cliente::flushEventListeners();
         }
+    }
+
+    #[Test]
+    public function muestra_un_cliente_existente(): void
+    {
+        $cliente = Cliente::factory()->create([
+            'email' => 'detalle@example.com',
+            'celular' => '+51 999-111-000',
+            'source_id' => $this->sourceInicio->id,
+        ]);
+
+        $this->actingAs($this->admin(), 'sanctum');
+
+        $this->getJson("/api/v1/clientes/{$cliente->id}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $cliente->id)
+            ->assertJsonPath('data.name', $cliente->name);
+    }
+
+    #[Test]
+    public function show_devuelve_404_si_no_existe(): void
+    {
+        $this->actingAs($this->admin(), 'sanctum');
+
+        $this->getJson('/api/v1/clientes/999')
+            ->assertNotFound()
+            ->assertJsonPath('error', 'Cliente no encontrado');
+    }
+
+    #[Test]
+    public function elimina_un_cliente_existente(): void
+    {
+        $cliente = Cliente::factory()->create([
+            'email' => 'borrar@example.com',
+            'celular' => '+51 999-222-000',
+            'source_id' => $this->sourceInicio->id,
+        ]);
+
+        $this->actingAs($this->admin(), 'sanctum');
+
+        $this->deleteJson("/api/v1/clientes/{$cliente->id}")->assertOk();
+
+        $this->assertDatabaseMissing('clientes', ['id' => $cliente->id]);
+    }
+
+    #[Test]
+    public function lista_clientes_paginados(): void
+    {
+        Cliente::factory()->count(3)->create([
+            'source_id' => $this->sourceInicio->id,
+        ]);
+
+        $this->actingAs($this->admin(), 'sanctum');
+
+        $this->getJson('/api/v1/clientes/paginate?perPage=2')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+    }
+
+    #[Test]
+    public function lista_avanzada_devuelve_estadisticas(): void
+    {
+        $cliente = Cliente::factory()->create([
+            'email' => 'avanzado@example.com',
+            'celular' => '+51 999-333-000',
+            'source_id' => $this->sourceInicio->id,
+        ]);
+
+        $this->actingAs($this->admin(), 'sanctum');
+
+        $this->getJson('/api/v1/clientes')
+            ->assertOk()
+            ->assertJsonPath('data.data.data.0.id', $cliente->id)
+            ->assertJsonStructure([
+                'data' => [
+                    'data',
+                    'pagination' => ['total', 'per_page', 'current_page', 'last_page'],
+                    'totals' => ['whatsapp' => ['popup', 'campaign']],
+                ],
+            ]);
+    }
+
+    #[Test]
+    public function envia_el_correo_del_producto_al_registrar_un_cliente(): void
+    {
+        $producto = Producto::create([
+            'nombre' => 'Producto Demo',
+            'titulo' => 'Titulo Demo',
+            'precio' => 99.90,
+            'link' => 'producto-demo',
+        ]);
+
+        ProductoEmailPaso::create([
+            'producto_id' => $producto->id,
+            'paso' => 1,
+            'asunto' => 'Hola',
+            'mensaje' => 'Hola {{nombre}}',
+            'delay_minutos' => 0,
+        ]);
+
+        $this->postJson('/api/v1/clientes', [
+            'name' => 'Ana Torres',
+            'email' => 'ana@example.com',
+            'celular' => '+51 999-888-777',
+            'source_id' => $this->sourceInicio->id,
+            'producto_id' => $producto->id,
+        ])->assertCreated();
+
+        Mail::assertSent(ProductInfoMail::class);
     }
 }
