@@ -7,127 +7,23 @@ use App\Http\Requests\Cliente\StoreClienteRequest;
 use App\Http\Requests\Cliente\UpdateClienteRequest;
 use App\Models\Cliente;
 use App\Services\ApiResponseService;
-use Illuminate\Http\Response;
+use App\Services\ClienteService;
 use App\Http\Contains\HttpStatusCode;
-use App\Mail\ClientRegistrationMail;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use App\Traits\SafeErrorTrait;
-use App\Models\HomePopupSetting;
-use App\Models\ClienteSource;
-use App\Models\WhatsappMessageLog;
-use App\Models\CampaignMessageLog;
 
 class ClienteController extends Controller
 {
     use SafeErrorTrait;
     protected ApiResponseService $apiResponse;
 
-    public function __construct(ApiResponseService $apiResponse)
-    {
+    public function __construct(
+        ApiResponseService $apiResponse,
+        private ClienteService $clienteService,
+    ) {
         $this->apiResponse = $apiResponse;
     }
 
-    /**
-     * @OA\Get(
-     *     path="/api/v1/clientes",
-     *     summary="Listar clientes",
-     *     description="Obtiene la lista de todos los clientes registrados con sus datos básicos.",
-     *     operationId="getClientes",
-     *     tags={"Clientes"},
-     *     @OA\Response(
-     *         response=200,
-     *         description="Lista de clientes obtenida exitosamente",
-     *         @OA\JsonContent(
-     *             type="object",
-     *             @OA\Property(
-     *                 property="status",
-     *                 type="string",
-     *                 example="success"
-     *             ),
-     *             @OA\Property(
-     *                 property="message",
-     *                 type="string",
-     *                 example="Clientes obtenidos exitosamente"
-     *             ),
-     *             @OA\Property(
-     *                 property="data",
-     *                 type="array",
-     *                 @OA\Items(
-     *                     type="object",
-     *                     @OA\Property(
-     *                         property="id",
-     *                         type="integer",
-     *                         example=1
-     *                     ),
-     *                     @OA\Property(
-     *                         property="name",
-     *                         type="string",
-     *                         example="Juan Pérez"
-     *                     ),
-     *                     @OA\Property(
-     *                         property="email",
-     *                         type="string",
-     *                         format="email",
-     *                         example="juan.perez@example.com"
-     *                     ),
-     *                     @OA\Property(
-     *                         property="celular",
-     *                         type="string",
-     *                         example="+51 987654321"
-     *                     )
-     *                 )
-     *             )
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=500,
-     *         description="Error interno del servidor",
-     *         @OA\JsonContent(
-     *             type="object",
-     *             @OA\Property(
-     *                 property="error",
-     *                 type="string",
-     *                 example="Error al obtener los clientes: mensaje del error"
-     *             )
-     *         )
-     *     )
-     * )
-     */
-
-    public function index()
-    {
-        try{
-            $cliente = Cliente::with(['producto', 'source'])->get();
-
-            $showClient = $cliente->map(function ($cliente){
-                return [
-                    'id' => $cliente->id,
-                    'name' => $cliente->name,
-                    'email' => $cliente->email,
-                    'celular' => $cliente->celular,
-                    'producto' => $cliente->producto ? $cliente->producto->nombre : null,
-                    'source' => $cliente->source ? $cliente->source->name : null,
-                    'created_at' => $cliente->created_at,
-                ];
-            });
-
-            return $this->apiResponse->successResponse(
-                $showClient,
-                'Clientes obtenidos exitosamente',
-                HttpStatusCode::OK
-            );
-        }
-        catch(\Exception $e){
-            return $this->apiResponse->errorResponse(
-                $this->safeErrorMessage($e, 'obtener los clientes'),
-                HttpStatusCode::INTERNAL_SERVER_ERROR
-            );
-        }
-
-    }
 
     /**
      * @OA\Post(
@@ -188,146 +84,15 @@ class ClienteController extends Controller
 
     public function store(StoreClienteRequest $request)
     {
-        $datosValidados = $request->validated();
-        DB::beginTransaction();
+        try {
+            $resultado = $this->clienteService->registrar($request->validated());
 
-        try
-        {
-            $shouldUpsert = false;
-
-            if (isset($datosValidados['source_id'])) {
-                $source = ClienteSource::find($datosValidados['source_id']);
-                $shouldUpsert = $source && $source->name === 'Producto detalle';
-            }
-
-            if ($shouldUpsert) {
-                // Buscar cliente existente por email o celular
-                $clienteExistente = Cliente::where('email', $datosValidados['email'])->first()
-                 ?? Cliente::where('celular', $datosValidados['celular'])->first();
-
-                if ($clienteExistente) {
-                    // Actualizar cliente existente
-                    $clienteExistente->update([
-                        'name' => $datosValidados['name'],
-                        'email' => $datosValidados['email'],
-                        'celular' => $datosValidados['celular'],
-                        'source_id' => $datosValidados['source_id'],
-                        'producto_id' => $datosValidados['producto_id'] ?? $clienteExistente->producto_id,
-                    ]);
-
-                    $clienteExistente->refresh();
-
-                    DB::commit();
-                    return $this->apiResponse->successResponse(
-                        $clienteExistente->fresh(),
-                        'Cliente actualizado con éxito.',
-                        HttpStatusCode::OK
-                    );
-                }
-            }
-
-            $cliente = Cliente::create(
-            [
-                'name' => $datosValidados['name'],
-                'email' => $datosValidados['email'],
-                'celular' => $datosValidados['celular'],
-                'source_id' => $datosValidados['source_id'],
-                'producto_id' => $datosValidados['producto_id'] ?? null,
-            ]
+            return $this->apiResponse->successResponse(
+                $resultado['cliente'],
+                $resultado['actualizado'] ? 'Cliente actualizado con éxito.' : 'Cliente creado con éxito',
+                $resultado['actualizado'] ? HttpStatusCode::OK : HttpStatusCode::CREATED
             );
-
-            DB::commit();
-
-            // Enviar correo de bienvenida si se proporcionó email
-            if ($request->email) {
-                try {
-                    $enviadoProducto = false;
-
-                    if (!empty($datosValidados['producto_id'])) {
-                        $producto = \App\Models\Producto::with(['emailPasos', 'imagenes'])->find($datosValidados['producto_id']);
-                        if ($producto) {
-                            $emailPaso1 = $producto->emailPasos->firstWhere('paso', 1);
-                            if ($emailPaso1) {
-                                $asunto = $emailPaso1->asunto ?? 'Información sobre ' . $producto->nombre;
-                                $mensaje = $emailPaso1->mensaje ?? '';
-                                $mensaje = str_replace('{{nombre}}', $request->name, $mensaje);
-
-                                $productData = [
-                                    'name' => $producto->nombre,
-                                    'main_image' => !empty($emailPaso1->imagen_url)
-                                        ? url($emailPaso1->imagen_url)
-                                        : asset('email/default-product.webp'),
-                                    'video_url' => $producto->video_url ?? null,
-                                    'client_name' => $request->name,
-                                    'mensaje_html' => $mensaje,
-                                ];
-
-                                Mail::to($request->email)->send(
-                                    new \App\Mail\ProductInfoMail(['product' => $productData], 'emails.product-generic', $asunto)
-                                );
-                                $enviadoProducto = true;
-                            }
-                        }
-                    }
-
-                    if (!$enviadoProducto && !empty($datosValidados['producto_id'])) {
-                        $producto = \App\Models\Producto::find($datosValidados['producto_id']);
-                        if ($producto) {
-                            // Fallback para productos: enviar información básica en lugar del Home Popup
-                            $imagenPrincipal = $producto->imagenes()->where('tipo', 'galeria')->first()
-                                            ?? $producto->imagenes()->first();
-
-                            $productData = [
-                                'name' => $producto->nombre,
-                                'main_image' => $imagenPrincipal
-                                    ? url($imagenPrincipal->url_imagen)
-                                    : asset('email/default-product.webp'),
-                                'video_url' => $producto->video_url ?? null,
-                                'client_name' => $request->name,
-                                'mensaje_html' => "Información sobre {$producto->nombre}<br><br>Precio: S/ {$producto->precio}<br><br>Puedes ver más detalles aquí: <a href='" . url('/productos/' . $producto->link) . "'>Ver producto</a>",
-                            ];
-
-                            Mail::to($request->email)->send(
-                                new \App\Mail\ProductInfoMail(['product' => $productData], 'emails.product-generic', 'Información sobre ' . $producto->nombre)
-                            );
-                            $enviadoProducto = true;
-                        }
-                    }
-
-                    if (!$enviadoProducto) {
-                        $setting = HomePopupSetting::with(['emailSteps'])->first();
-                    }
-
-                    if (!$enviadoProducto && $setting && $setting->email_enabled) {
-                        $emailSteps = $setting->emailSteps->keyBy('sequence');
-                        $defaultDelays = [0, 30, 1440];
-
-                        foreach ($emailSteps as $step) {
-                            $delay = $step->delay_minutes !== null ? (int) $step->delay_minutes : $defaultDelays[$step->sequence - 1];
-
-                            if ($delay !== -1) {
-                                \App\Jobs\SendMarketingEmailJob::dispatch($cliente, $step->sequence, [
-                                    'subject' => $step->subject,
-                                    'message' => $step->message,
-                                    'image_url' => $step->image_url,
-                                    'btn_text' => $step->btn_text,
-                                    'btn_link' => $step->btn_link,
-                                    'btn_bg_color' => $step->btn_bg_color,
-                                    'btn_text_color' => $step->btn_text_color,
-                                ])->delay(now()->addMinutes($delay));
-                            }
-                        }
-                    }
-                } catch (\Exception $e) {
-                    \Log::error('Error al enviar correo de registro: ' . $e->getMessage());
-                    // No cortamos el flujo si falla el correo
-                }
-            }
-
-            return $this->apiResponse->successResponse($cliente->fresh(), 'Cliente creado con éxito', HttpStatusCode::CREATED);
         } catch (\Exception $e) {
-            DB::rollBack();
-
             return $this->apiResponse->errorResponse(
                 $this->safeErrorMessage($e, 'Crear el cliente'),
                 HttpStatusCode::INTERNAL_SERVER_ERROR
@@ -424,21 +189,17 @@ class ClienteController extends Controller
     public function show(string $id)
     {
         try {
-            $cliente = Cliente::find($id);
+            $cliente = $this->clienteService->detalle($id);
 
-            if (!$cliente) {
-                return response()->json(['error' => 'Cliente no encontrado'], HttpStatusCode::NOT_FOUND->value);
+            if ($cliente === null) {
+                return response()->json(
+                    ['error' => 'Cliente no encontrado'],
+                    HttpStatusCode::NOT_FOUND->value
+                );
             }
 
-            $showClient = [
-                'id' => $cliente->id,
-                'name' => $cliente->name,
-                'email' => $cliente->email,
-                'celular' => $cliente->celular,
-            ];
-
             return $this->apiResponse->successResponse(
-                $showClient,
+                $cliente,
                 'Cliente obtenido exitosamente',
                 HttpStatusCode::OK
             );
@@ -527,43 +288,24 @@ class ClienteController extends Controller
 
     public function update(UpdateClienteRequest $request, string $id)
     {
-        $datosValidados = $request->validated();
-
         $cliente = Cliente::find($id);
-        if (!$cliente){
-            return response() -> json (
+
+        if (!$cliente) {
+            return response()->json(
                 ['error' => 'Cliente no encontrado'],
                 HttpStatusCode::NOT_FOUND->value
             );
         }
 
-        DB::beginTransaction();
+        try {
+            $cliente = $this->clienteService->actualizar($cliente, $request->validated());
 
-        try
-        {
-            $camposActualizar = [];
-
-            foreach (['name', 'email', 'celular'] as $campo) {
-                if (array_key_exists($campo, $datosValidados)) {
-                    $camposActualizar[$campo] = $datosValidados[$campo];
-                }
-            }
-
-            if (!empty($camposActualizar)) {
-                $cliente->update($camposActualizar);
-            }
-
-            /*$cliente->update([
-                'name' => $datosValidados['name'],
-                'email' => $datosValidados['email'],
-                'celular' => $datosValidados['celular']
-            ]);*/
-
-            DB::commit();
-            return $this->apiResponse->successResponse($cliente->fresh(), 'Cliente actualizado con éxito.', HttpStatusCode::OK);
-        }
-        catch (\Exception $e) {
-            DB::rollBack();
+            return $this->apiResponse->successResponse(
+                $cliente,
+                'Cliente actualizado con éxito.',
+                HttpStatusCode::OK
+            );
+        } catch (\Exception $e) {
             return $this->apiResponse->errorResponse(
                 $this->safeErrorMessage($e, 'actualizar el cliente'),
                 HttpStatusCode::INTERNAL_SERVER_ERROR
@@ -620,29 +362,23 @@ class ClienteController extends Controller
     public function destroy(string $id)
     {
         $cliente = Cliente::find($id);
-        if (!$cliente){
-            return response() -> json (
+
+        if (!$cliente) {
+            return response()->json(
                 ['error' => 'Cliente no encontrado'],
                 HttpStatusCode::NOT_FOUND->value
             );
         }
 
-        DB::beginTransaction();
-
-        try{
-            $cliente->delete();
-
-            DB::commit();
+        try {
+            $this->clienteService->eliminar($cliente);
 
             return $this->apiResponse->successResponse(
                 null,
                 'Cliente eliminado exitosamente',
                 HttpStatusCode::OK
             );
-        }
-        catch (\Exception $e) {
-            DB::rollBack();
-
+        } catch (\Exception $e) {
             return $this->apiResponse->errorResponse(
                 $this->safeErrorMessage($e, 'eliminar el cliente'),
                 HttpStatusCode::INTERNAL_SERVER_ERROR
@@ -657,18 +393,21 @@ class ClienteController extends Controller
             'page' => ['sometimes', 'integer', 'min:1'],
         ]);
 
-        $perPage = $validate['perPage'] ?? 10;
-        $page = $validate['page'] ?? 1;
-
-        $clientes = Cliente::paginate($perPage, ['*'], 'page', $page);
+        $clientes = $this->clienteService->paginados(
+            $validate['perPage'] ?? 10,
+            $validate['page'] ?? 1
+        );
 
         return response()->json([
-            'data'=> $clientes->items()
+            'data' => $clientes->items(),
         ]);
     }
 
     /**
      * Obtener lista avanzada de clientes con estadísticas de Whatsapp enbebidas
+     */
+    /**
+     * Obtener lista avanzada de clientes con estadísticas de Whatsapp embebidas
      */
     public function getAdvancedList(Request $request)
     {
@@ -678,118 +417,26 @@ class ClienteController extends Controller
                 'page' => ['sometimes', 'integer', 'min:1'],
             ]);
 
-            $perPage = $validated['perPage'] ?? 25;
-            $page = $validated['page'] ?? 1;
-
-            // Obtener clientes con relaciones y estadísticas de WhatsApp
-            $clientes = Cliente::with(['producto', 'source'])
-                ->withCount(['whatsappMessages as whatsapp_total_messages'])
-                ->withMax('whatsappMessages as whatsapp_ult_envio', 'created_at')
-                ->withCount(['campaignMessages as campaign_total_messages' => function($query) {
-                    $query->where('status', 'sent');
-                }])
-                ->withMax(['campaignMessages as campaign_ult_envio' => function($query) {
-                    $query->where('status', 'sent');
-                }], 'created_at')
-                ->paginate($perPage, ['*'], 'page', $page);
-
-            // Mapear clientes para incluir estadísticas
-            $clientesWithStats = $clientes->through(function ($cliente) {
-                return [
-                    'id' => $cliente->id,
-                    'name' => $cliente->name,
-                    'email' => $cliente->email,
-                    'celular' => $cliente->celular,
-                    'producto' => $cliente->producto ? $cliente->producto->nombre : null,
-                    'source' => $cliente->source ? $cliente->source->name : null,
-                    'stats' => [
-                        'whatsapp' => [
-                            'popup' => [
-                                'total_messages' => $cliente->whatsapp_total_messages,
-                                'ult_envio' => $cliente->whatsapp_ult_envio,
-                            ],
-                            'campaign' => [
-                                'total_messages' => $cliente->campaign_total_messages,
-                                'ult_envio' => $cliente->campaign_ult_envio,
-                            ]
-                        ]
-                    ],
-                    'created_at' => $cliente->created_at,
-                ];
-            });
-
-            // obtener lista global de estadísticas de WhatsApp
-            $globalStats = $this->getGlobalStats();
+            $datos = $this->clienteService->listarConEstadisticas(
+                $validated['perPage'] ?? 25,
+                $validated['page'] ?? 1
+            );
 
             return $this->apiResponse->successResponse(
-                [
-                    'data' => $clientesWithStats,
-                    'pagination' => [
-                        'total' => $clientes->total(),
-                        'per_page' => $clientes->perPage(),
-                        'current_page' => $clientes->currentPage(),
-                        'last_page' => $clientes->lastPage(),
-                    ],
-                    'totals' => $globalStats,
-                ],
+                $datos,
                 'Clientes obtenidos exitosamente',
                 HttpStatusCode::OK
             );
         } catch (\Exception $e) {
-
             \Log::error('Error al obtener los clientes', [
                 'exception' => $e,
             ]);
 
-            return response()->json(['error' => 'No se pudo obtener la lista de clientes.'], HttpStatusCode::INTERNAL_SERVER_ERROR->value);
+            return response()->json(
+                ['error' => 'No se pudo obtener la lista de clientes.'],
+                HttpStatusCode::INTERNAL_SERVER_ERROR->value
+            );
         }
     }
 
-    /**
-     * Obtener estadísticas detalladas de un cliente específico
-     */
-    public function getClientStats($id)
-    {
-        $cliente = Cliente::with(['producto', 'source', 'whatsappMessages', 'campaignMessages'])->find($id);
-
-        return [
-            'id' => $cliente->id,
-            'name' => $cliente->name,
-            'email' => $cliente->email,
-            'celular' => $cliente->celular,
-            'producto' => $cliente->producto ? $cliente->producto->nombre : null,
-            'source' => $cliente->source ? $cliente->source->name : null,
-            'stats' => [
-                'whatsapp' => [
-                    'popup' => [
-                        'total_messages' => $cliente->whatsappMessages->count(),
-                        'ult_envio' => $cliente->whatsappMessages->max('created_at'),
-                    ],
-                    'campaign' => [
-                        'total_messages' => $cliente->campaignMessages->count(),
-                        'ult_envio' => $cliente->campaignMessages->max('created_at'),
-                    ]
-                ]
-            ],
-        ];
-    }
-
-    /**
-     * Obtener estadísticas globales de mensajes WhatsApp
-     */
-    public function getGlobalStats()
-    {
-        return [
-            'whatsapp' => [
-                'popup' => [
-                    'total_messages' => WhatsappMessageLog::count(),
-                    'ult_envio' => WhatsappMessageLog::max('created_at'),
-                ],
-                'campaign' => [
-                    'total_messages' => CampaignMessageLog::where('status', 'sent')->count(),
-                    'ult_envio' => CampaignMessageLog::where('status', 'sent')->max('created_at'),
-                ],
-            ]
-        ];
-    }
 }

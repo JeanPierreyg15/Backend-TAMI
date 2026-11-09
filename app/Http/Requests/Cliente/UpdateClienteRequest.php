@@ -5,6 +5,7 @@ namespace App\Http\Requests\Cliente;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Validation\Rule;
 
 class UpdateClienteRequest extends FormRequest
 {
@@ -17,11 +18,13 @@ class UpdateClienteRequest extends FormRequest
     {
         $isPut = $this->isMethod('put');
         $required = $isPut ? 'required' : 'sometimes';
-        $clienteId = $this->route('id');
+
+        // La ruta se declara como {cliente}, no {id}.
+        $clienteId = $this->route('cliente');
 
         return [
             'name' => [$required,'string','max:100'],
-            'email' => [$required, 'email', 'unique:clientes,email,' . $clienteId, 'max:100'],
+            'email' => [$required, 'email', Rule::unique('clientes', 'email')->ignore($clienteId), 'max:100'],
             'celular' => [$required, 'regex:/^\+\d{1,3}\s?\d{1,15}(?:[-\s]?\d+)*$/']
         ];
     }

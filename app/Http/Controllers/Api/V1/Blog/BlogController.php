@@ -6,12 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\PostBlog\PostStoreBlog;
 use App\Http\Requests\PostBlog\UpdateBlog;
 use App\Services\ApiResponseService;
-use Illuminate\Support\Facades\Storage;
+use App\Services\BlogService;
 use App\Models\Blog;
 use App\Http\Contains\HttpStatusCode;
 use App\Http\Resources\BlogResource;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 use App\Traits\SafeErrorTrait;
 
@@ -20,8 +19,10 @@ class BlogController extends Controller
     use SafeErrorTrait;
     protected ApiResponseService $apiResponse;
 
-    public function __construct(ApiResponseService $apiResponse)
-    {
+    public function __construct(
+        ApiResponseService $apiResponse,
+        private BlogService $blogService,
+    ) {
         $this->apiResponse = $apiResponse;
     }
 
@@ -99,9 +100,10 @@ class BlogController extends Controller
     public function index()
     {
         try {
-            $blog = Blog::with(['imagenes', 'parrafos', 'producto', 'etiqueta'])->get();
+            $blogs = $this->blogService->listar();
+
             return $this->apiResponse->successResponse(
-                BlogResource::collection($blog),
+                BlogResource::collection($blogs),
                 'Blogs obtenidos exitosamente',
                 HttpStatusCode::OK
             );
@@ -113,18 +115,6 @@ class BlogController extends Controller
         }
     }
 
-    private function guardarImagen($archivo)
-    {
-        $extension = strtolower($archivo->getClientOriginalExtension());
-        $originalBase = pathinfo($archivo->getClientOriginalName(), PATHINFO_FILENAME);
-        $base = preg_replace('/[^A-Za-z0-9._\-]+/', '_', trim($originalBase));
-        if ($base === '' || $base === '.') {
-            $base = 'imagen';
-        }
-        $nombre = $base . '_' . uniqid() . '.' . $extension;
-        $path = $archivo->storeAs("imagenes", $nombre, "public");
-        return Storage::disk('public')->url($path);
-    }
 
     /**
      * @OA\Post(
@@ -237,99 +227,22 @@ class BlogController extends Controller
      */
     public function store(PostStoreBlog $request)
     {
-        $datosValidados = $request->validated();
-        DB::beginTransaction();
-
         try {
-            if (!$request->hasFile('miniatura')) {
-                throw new \Exception('No se recibió miniatura como archivo');
-            }
+            $blog = $this->blogService->crear($request->validated(), $request);
 
-            $imagenPrincipal = $request->file("miniatura");
-            $rutaImagenPrincipal = $this->guardarImagen($imagenPrincipal);
-            $heroImagePath = null;
-            if ($request->hasFile('hero_image')) {
-                $heroImagePath = $this->guardarImagen(
-                    $request->file('hero_image')
-                );
-            }
-            $blogData = [
-                "titulo" => $datosValidados["titulo"],
-                "producto_id" => $datosValidados["producto_id"],
-                "link" => $datosValidados["link"],
-                "subtitulo1" => $datosValidados["subtitulo1"],
-                "subtitulo2" => $datosValidados["subtitulo2"],
-                "video_url" => $datosValidados["video_url"],
-                "video_titulo" => $datosValidados["video_titulo"],
-                "miniatura" => $rutaImagenPrincipal,
-                "miniatura_nombre" => $datosValidados["miniatura_nombre"] ?? null,
-                "miniatura_alt" => $datosValidados["miniatura_alt"] ?? null,
-                "miniatura_tittle" => $datosValidados["miniatura_tittle"] ?? null,
-                "hero_image" => $heroImagePath,
-                "hero_image_nombre" => $datosValidados["hero_image_nombre"] ?? null,
-                "hero_image_alt" => $datosValidados["hero_image_alt"] ?? null,
-                "hero_image_tittle" => $datosValidados["hero_image_tittle"] ?? null,
-            ];
-
-            if (isset($datosValidados['created_at'])) {
-                $blogData['created_at'] = $datosValidados['created_at'];
-            }
-            
-            $blog = Blog::create($blogData);
-
-            if (
-                isset($datosValidados['meta_titulo']) ||
-                isset($datosValidados['meta_descripcion']) ||
-                isset($datosValidados['popup_button_text']) ||
-                isset($datosValidados['popup_button_color']) ||
-                isset($datosValidados['popup_text_color']) ||
-                isset($datosValidados['popup_estilo']) ||
-                isset($datosValidados['popup3_sin_fondo'])
-            ) {
-                $blog->etiqueta()->create([
-                    'meta_titulo' => $datosValidados['meta_titulo'] ?? null,
-                    'meta_descripcion' => $datosValidados['meta_descripcion'] ?? null,
-                    'popup_button_text' => $datosValidados['popup_button_text'] ?? null,
-                    'popup_button_color' => $datosValidados['popup_button_color'] ?? null,
-                    'popup_text_color' => $datosValidados['popup_text_color'] ?? null,
-                    'popup_estilo' => $datosValidados['popup_estilo'] ?? null,
-                    'popup3_sin_fondo' => $datosValidados['popup3_sin_fondo'] ?? null,
-                ]);
-            }
-
-            // Guardar imágenes solo si se envían
-            if (isset($datosValidados['imagenes'])) {
-                $imagenes = $request->file("imagenes", []);
-                $altTexts = $datosValidados["img_alt"] ?? [];
-                $nombres = $datosValidados["img_nombre"] ?? [];
-                $titles = $datosValidados["img_tittle"] ?? [];
-                foreach ($imagenes as $i => $imagen) {
-                    $ruta = $this->guardarImagen($imagen);
-                    $blog->imagenes()->create([
-                        "ruta_imagen" => $ruta,
-                        "img_alt" => $altTexts[$i] ?? null,
-                        "img_nombre" => $nombres[$i] ?? null,
-                        "img_tittle" => $titles[$i] ?? null,
-                    ]);
-                }
-            }
-
-            foreach ($datosValidados["parrafos"] as $item) {
-                $blog->parrafos()->createMany([
-                    ["parrafo" => $item]
-                ]);
-            }
-
-            DB::commit();
-            return $this->apiResponse->successResponse(new BlogResource($blog->fresh()), 'Blog creado con éxito.', HttpStatusCode::CREATED);
+            return $this->apiResponse->successResponse(
+                new BlogResource($blog),
+                'Blog creado con éxito.',
+                HttpStatusCode::CREATED
+            );
         } catch (\Exception $e) {
-            DB::rollBack();
             return $this->apiResponse->errorResponse(
                 $this->safeErrorMessage($e, 'crear el blog'),
                 HttpStatusCode::INTERNAL_SERVER_ERROR
             );
         }
     }
+    
     /**
      * Mostrar un blog específico
      *
@@ -392,8 +305,7 @@ class BlogController extends Controller
     public function show(int $id)
     {
         try {
-            $blog = Blog::with(['imagenes', 'parrafos', 'producto', 'etiqueta'])
-                ->findOrFail($id);
+            $blog = $this->blogService->buscar($id);
 
             return $this->apiResponse->successResponse(
                 new BlogResource($blog),
@@ -471,9 +383,7 @@ class BlogController extends Controller
     public function showLink(string $link)
     {
         try {
-            $blog = Blog::with(['imagenes', 'parrafos', 'producto', 'etiqueta'])
-                ->where('link', $link)
-                ->firstOrFail();
+            $blog = $this->blogService->buscarPorLink($link);
 
             return $this->apiResponse->successResponse(
                 new BlogResource($blog),
@@ -568,179 +478,17 @@ class BlogController extends Controller
      */
     public function update(UpdateBlog $request, $id)
     {
-        $datosValidados = $request->validated();
-        DB::beginTransaction();
         $blog = Blog::findOrFail($id);
 
         try {
-            $camposActualizar = [];
+            $blog = $this->blogService->actualizar($blog, $request->validated(), $request);
 
-            foreach ([
-                "titulo",
-                "producto_id",
-                "link",
-                "subtitulo1",
-                "subtitulo2",
-                "video_url",
-                "video_titulo",
-                "miniatura_nombre",
-                "miniatura_alt",
-                "miniatura_tittle",
-                "hero_image_nombre",
-                "hero_image_alt",
-                "hero_image_tittle",
-                "created_at"
-            ] as $campo) {
-                if ($request->has($campo)) {
-                    $camposActualizar[$campo] = $datosValidados[$campo];
-                }
-            }
-
-            if ($request->hasFile('miniatura')) {
-                if ($blog->miniatura) {
-                    $rutaAnterior = str_replace('/storage/', '', $blog->miniatura);
-                    Storage::disk('public')->delete($rutaAnterior);
-                }
-                $camposActualizar['miniatura'] = $this->guardarImagen($request->file('miniatura'));
-            } 
-            if ($request->hasFile('hero_image')) {
-                if ($blog->hero_image) {
-                    $rutaAnterior = str_replace('/storage/', '', $blog->hero_image);
-                    Storage::disk('public')->delete($rutaAnterior);
-                }
-
-                $camposActualizar['hero_image'] = $this->guardarImagen(
-                    $request->file('hero_image')
-                );
-            }
-            
-            elseif ($request->has('miniatura') && $datosValidados['miniatura'] === null) {
-                if ($blog->miniatura) {
-                    $rutaAnterior = str_replace('/storage/', '', $blog->miniatura);
-                    Storage::disk('public')->delete($rutaAnterior);
-                }
-                $camposActualizar['miniatura'] = null;
-            }
-
-            $blog->update($camposActualizar);
-
-            if (
-                isset($datosValidados['meta_titulo']) ||
-                isset($datosValidados['meta_descripcion']) ||
-                isset($datosValidados['popup_button_text']) ||
-                isset($datosValidados['popup_button_color']) ||
-                isset($datosValidados['popup_text_color']) ||
-                isset($datosValidados['popup_estilo']) ||
-                isset($datosValidados['popup3_sin_fondo'])
-            ) {
-                $blog->etiqueta()->updateOrCreate(
-                    ['blog_id' => $blog->id],
-                    [
-                        'meta_titulo' => $datosValidados['meta_titulo'] ?? null,
-                        'meta_descripcion' => $datosValidados['meta_descripcion'] ?? null,
-                        'popup_button_text' => $datosValidados['popup_button_text'] ?? null,
-                        'popup_button_color' => $datosValidados['popup_button_color'] ?? null,
-                        'popup_text_color' => $datosValidados['popup_text_color'] ?? null,
-                        'popup_estilo' => $datosValidados['popup_estilo'] ?? null,
-                        'popup3_sin_fondo' => $datosValidados['popup3_sin_fondo'] ?? null,
-                    ]
-                );
-            } else if ($blog->etiqueta && (
-                !isset($datosValidados['meta_titulo']) &&
-                !isset($datosValidados['meta_descripcion']) &&
-                !isset($datosValidados['popup_button_text']) &&
-                !isset($datosValidados['popup_button_color']) &&
-                !isset($datosValidados['popup_text_color']) &&
-                !isset($datosValidados['popup_estilo']) &&
-                !isset($datosValidados['popup3_sin_fondo'])
-            )) {
-                $blog->etiqueta()->delete();
-            }
-
-
-            if ($request->has('parrafos') || $request->has('imagenes') || $request->has('imagen_ids')) {
-                $tiposImagen = $request->input('imagen_tipo', []);
-                if (is_string($tiposImagen)) {
-                    $tiposImagen = [$tiposImagen];
-                }
-
-                $imagenesNuevas = $request->file('imagenes', []);
-                $idsImagenesExistentes = $request->input('imagen_ids', []);
-                if (is_string($idsImagenesExistentes)) {
-                    $idsImagenesExistentes = [$idsImagenesExistentes];
-                }
-
-                $altTexts = $datosValidados['img_alt'] ?? [];
-                $nombres = $datosValidados['img_nombre'] ?? [];
-                $titles = $datosValidados['img_tittle'] ?? [];
-                $parrafos = $datosValidados['parrafos'] ?? [];
-                $imagenesActuales = $blog->imagenes->keyBy('id');
-                $imagenesFinales = [];
-                $idsConservados = [];
-                $cursorArchivos = 0;
-                $cursorIds = 0;
-
-                foreach ($parrafos as $indice => $parrafo) {
-                    $tipo = $tiposImagen[$indice] ?? null;
-
-                    if ($tipo === 'file') {
-                        $archivo = $imagenesNuevas[$cursorArchivos] ?? null;
-                        $cursorArchivos++;
-
-                        if (!$archivo) {
-                            throw new \Exception('No se encontró la imagen nueva esperada para una sección.');
-                        }
-
-                        $imagenesFinales[] = [
-                            'ruta_imagen' => $this->guardarImagen($archivo),
-                            'img_alt' => $altTexts[$indice] ?? null,
-                            'img_nombre' => $nombres[$indice] ?? null,
-                            'img_tittle' => $titles[$indice] ?? null,
-                        ];
-                        continue;
-                    }
-
-                    $imagenId = $idsImagenesExistentes[$cursorIds] ?? null;
-                    $cursorIds++;
-
-                    if ($imagenId && isset($imagenesActuales[$imagenId])) {
-                        $imagenExistente = $imagenesActuales[$imagenId];
-                        $idsConservados[] = $imagenExistente->id;
-                        $imagenesFinales[] = [
-                            'ruta_imagen' => $imagenExistente->ruta_imagen,
-                            'img_alt' => empty($altTexts[$indice]) ? null : $altTexts[$indice],
-                            'img_nombre' => empty($nombres[$indice]) ? null : $nombres[$indice],
-                            'img_tittle' => empty($titles[$indice]) ? null : $titles[$indice],
-                        ];
-                        continue;
-                    }
-
-                    throw new \Exception('No se pudo resolver la imagen existente de una sección.');
-                }
-
-                foreach ($blog->imagenes as $imagen) {
-                    if (!in_array($imagen->id, $idsConservados)) {
-                        Storage::disk('public')->delete(str_replace('/storage/', '', $imagen->ruta_imagen));
-                    }
-                }
-
-                $blog->imagenes()->delete();
-
-                foreach ($imagenesFinales as $imagenData) {
-                    $blog->imagenes()->create($imagenData);
-                }
-
-                 // Recrear párrafos
-                $blog->parrafos()->delete();
-                foreach ($parrafos as $parrafo) {
-                    $blog->parrafos()->create(['parrafo' => $parrafo]);
-                }
-            }
-
-            DB::commit();
-            return $this->apiResponse->successResponse(new BlogResource($blog->fresh()), 'Blog actualizado exitosamente', HttpStatusCode::OK);
+            return $this->apiResponse->successResponse(
+                new BlogResource($blog),
+                'Blog actualizado exitosamente',
+                HttpStatusCode::OK
+            );
         } catch (\Exception $e) {
-            DB::rollBack();
             return $this->apiResponse->errorResponse(
                 $this->safeErrorMessage($e, 'actualizar el blog'),
                 HttpStatusCode::INTERNAL_SERVER_ERROR
@@ -785,28 +533,10 @@ class BlogController extends Controller
      */
     public function destroy($id)
     {
-        DB::beginTransaction();
-
         try {
             $blog = Blog::findOrFail($id);
 
-            $rutasImagenes = [];
-            foreach ($blog->imagenes as $imagen) {
-                $relativePath = str_replace('storage/', '', $imagen->ruta_imagen);
-                array_push($rutasImagenes, $relativePath);
-            }
-
-            $blog->imagenes()->delete();
-            $blog->parrafos()->delete();
-            $blog->etiqueta()->delete();
-
-            if (!empty($rutasImagenes)) {
-                Storage::disk('public')->delete($rutasImagenes);
-            }
-
-            $blog->delete();
-
-            DB::commit();
+            $this->blogService->eliminar($blog);
 
             return $this->apiResponse->successResponse(
                 null,
@@ -814,7 +544,6 @@ class BlogController extends Controller
                 HttpStatusCode::OK
             );
         } catch (\Exception $e) {
-            DB::rollBack();
             return $this->apiResponse->errorResponse(
                 $this->safeErrorMessage($e, 'eliminar el blog'),
                 HttpStatusCode::INTERNAL_SERVER_ERROR
@@ -824,13 +553,13 @@ class BlogController extends Controller
 
     public function paginate(Request $request)
     {
-        $perPage = $request->get('perPage', 5);
-        $page = $request->get('page', 1);
-
-        $blogs = Blog::paginate($perPage, ['*'], 'page', $page);
+        $blogs = $this->blogService->paginados(
+            $request->get('perPage', 5),
+            $request->get('page', 1)
+        );
 
         return response()->json([
-            'data'=> $blogs->items()
+            'data' => $blogs->items()
         ]);
     }
 }

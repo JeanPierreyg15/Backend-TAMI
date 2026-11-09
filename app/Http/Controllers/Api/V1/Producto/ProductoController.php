@@ -7,7 +7,6 @@ use App\Http\Requests\Producto\V2StoreProductoRequest;
 use App\Http\Requests\Producto\V2UpdateProductoRequest;
 use App\Http\Resources\ProductoResource;
 use App\Http\Contains\HttpStatusCode;
-use App\Models\Producto;
 use App\Services\ProductoService;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
@@ -105,9 +104,8 @@ class ProductoController extends Controller
     public function index()
     {
         try {
-            $productos = Producto::with(['imagenes', 'especificaciones', 'productosRelacionados.imagenes', 'etiqueta', 'dimensiones'])
-                ->orderBy('created_at')
-                ->get();
+            $productos = $this->productoService->listar();
+
             return ProductoResource::collection($productos)->resolve();
         } catch (\Exception $e) {
             return $this->handleException($e, 'obtener los productos');
@@ -120,7 +118,7 @@ class ProductoController extends Controller
     public function related($id)
     {
         try {
-            $producto = Producto::with(['productosRelacionados'])->findOrFail($id);
+            $producto = $this->productoService->relacionados((int) $id);
 
             return response()->json([
                 'producto' => $producto->nombre,
@@ -142,13 +140,13 @@ class ProductoController extends Controller
      */
     public function paginate(Request $request)
     {
-        $perPage = $request->get('perPage', 5);
-        $page = $request->get('page', 1);
-
-        $productos = Producto::paginate($perPage, ['*'], 'page', $page);
+        $productos = $this->productoService->paginados(
+            $request->get('perPage', 5),
+            $request->get('page', 1)
+        );
 
         return response()->json([
-            'data'=> $productos->items()
+            'data' => $productos->items()
         ]);
     }
 
@@ -322,7 +320,7 @@ class ProductoController extends Controller
     public function show(string $id)
     {
         try {
-            $producto = Producto::with(['imagenes', 'productosRelacionados', 'etiqueta', 'dimensiones'])->find($id);
+            $producto = $this->productoService->buscar($id);
 
             if ($producto === null) {
                 return $this->notFound('Producto');
@@ -410,9 +408,7 @@ class ProductoController extends Controller
     public function showByLink($link)
     {
         try {
-            $producto = Producto::with(['imagenes', 'productosRelacionados.imagenes', 'etiqueta', 'dimensiones'])
-                ->where('link', $link)
-                ->first();
+            $producto = $this->productoService->buscarPorLink($link);
 
             if ($producto === null) {
                 return $this->notFound('Producto');
@@ -516,7 +512,7 @@ class ProductoController extends Controller
         ]);
 
         try {
-            $producto = Producto::findOrFail($id);
+            $producto = $this->productoService->buscarOFallar($id);
             $datosValidados = $request->validated();
             Log::info('Validated data:', ['datos_validados' => $datosValidados]);
 
@@ -578,7 +574,7 @@ class ProductoController extends Controller
     public function destroy(string $id)
     {
         try {
-            $producto = Producto::findOrFail($id);
+            $producto = $this->productoService->buscarOFallar($id);
             $this->productoService->deleteProductoCompleto($producto);
 
             return $this->successMessage(

@@ -27,36 +27,32 @@ class UpdateBlog extends FormRequest
         $blogId = $this->route('blog');
 
         return [
-            /* 'titulo' => [$required, 'string', 'max:255'],
-            'producto_id' => [$required, 'integer', 'exists:productos,id'],
-            'link' => [$required, 'string', 'max:255', Rule::unique('blogs', 'link')->ignore($blogId)],
-            'subtitulo1' => [$required, 'string', 'max:255'],
-            'subtitulo2' => [$required, 'string', 'max:255'],
-            'video_url' => [$required, 'url'],
-            'video_titulo' => [$required, 'string', 'max:255'], */
             'titulo' => ['required', 'string', 'max:255'],
             'producto_id' => ['required', 'integer', 'exists:productos,id'],
             'link' => ['required', 'string', 'max:255', Rule::unique('blogs', 'link')->ignore($blogId)],
             'subtitulo1' => ['required', 'string', 'max:255'],
-            'subtitulo2' => ['required', 'string', 'max:255'],
-            'video_url' => ['required', 'url'],
+            'subtitulo2' => ['required', 'string', 'max:500'],
+            'video_url' => ['required', 'url', 'max:255'],
             'video_titulo' => ['required', 'string', 'max:255'],
             'created_at' => ['nullable', 'date'],
 
-            'meta_titulo' => 'nullable|string|min:10|max:60',
-            'meta_descripcion' => 'nullable|string|min:40|max:160',
-            'popup_button_text' => 'nullable|string|max:255',
+            // Campos opcionales: no se exige longitud mínima.
+            'meta_titulo' => 'nullable|string|max:255',
+            'meta_descripcion' => 'nullable|string|max:500',
+            'popup_button_text' => 'nullable|string|max:50',
             'popup_button_color' => 'nullable|string|max:20',
             'popup_text_color' => 'nullable|string|max:20',
 
             'miniatura' => ['sometimes', 'image', 'max:3048'],
-            'miniatura_nombre' => 'nullable|string|min:10|max:120',
-            'miniatura_alt' => 'nullable|string|min:10|max:120',
-            'miniatura_tittle' => 'nullable|string|min:10|max:120',
+            'eliminar_miniatura' => ['sometimes', 'boolean'],
+            'miniatura_nombre' => 'nullable|string|max:125',
+            'miniatura_alt' => 'nullable|string|max:125',
+            'miniatura_tittle' => 'nullable|string|max:125',
             'hero_image' => ['sometimes', 'image', 'max:3048'],
-            'hero_image_nombre' => 'nullable|string|min:10|max:120',
-            'hero_image_alt' => 'nullable|string|min:10|max:120',
-            'hero_image_tittle' => 'nullable|string|min:10|max:120',
+            'eliminar_hero_image' => ['sometimes', 'boolean'],
+            'hero_image_nombre' => 'nullable|string|max:125',
+            'hero_image_alt' => 'nullable|string|max:125',
+            'hero_image_tittle' => 'nullable|string|max:125',
             'imagenes' => ['sometimes', 'array'],
             'imagenes.*' => ['sometimes', 'image', 'max:3048'],
             'imagen_tipo' => ['sometimes', 'array'],
@@ -64,25 +60,15 @@ class UpdateBlog extends FormRequest
             'imagen_ids' => ['sometimes', 'array'],
             'imagen_ids.*' => ['sometimes', 'integer'],
 
-            /* 'text_alt' => [$isPut ? 'required' : 'sometimes', 'array'],
-            'text_alt.*' => [$isPut ? 'required' : 'sometimes', 'string', 'max:255'],
-
-            'parrafos' => [$isPut ? 'required' : 'sometimes', 'array'],
-            'parrafos.*' => [$isPut ? 'required' : 'sometimes', 'string', 'max:2047'], */
-
-            /*'text_alt' => ['required', 'array'],
-            'text_alt.*' => ['required', 'string', 'max:255'],*/
-
             'img_alt' => ['nullable', 'array'],
-            'img_alt.*' => ['nullable', 'string', 'max:255'],
+            'img_alt.*' => ['nullable', 'string'],
             'img_nombre' => ['nullable', 'array'],
-            'img_nombre.*' => ['nullable', 'string', 'max:120'],
+            'img_nombre.*' => ['nullable', 'string', 'max:125'],
             'img_tittle' => ['nullable', 'array'],
-            'img_tittle.*' => ['nullable', 'string', 'max:120'],
-
+            'img_tittle.*' => ['nullable', 'string', 'max:125'],
 
             'parrafos' => ['required', 'array'],
-            'parrafos.*' => ['required', 'string', 'max:2047'],
+            'parrafos.*' => ['required', 'string', 'max:65535'],
         ];
     }
 
